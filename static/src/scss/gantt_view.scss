@@ -1,0 +1,51 @@
+.o_gantt_view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+
+    .o_gantt_controller_header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px;
+        border-bottom: 1px solid #dee2e6;
+        flex-shrink: 0;
+    }
+
+    .o_gantt_renderer_wrapper {
+        flex-grow: 1;
+        position: relative;
+        overflow: hidden;
+        cursor: grab;
+
+        &:active {
+            cursor: grabbing;
+        }
+    }
+
+    .o_gantt_renderer_container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    .o_gantt_tooltip {
+        position: absolute;
+        background: rgba(0, 0, 0, 0.75);
+        color: white;
+        padding: 5px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        pointer-events: none;
+        white-space: pre-wrap;
+        z-index: 1000;
+    }
+}

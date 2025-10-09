@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="project_task_gantt.GanttView" owl="1">
+        <Layout viewType="'gantt'">
+            <div class="o_gantt_view">
+                <div class="o_gantt_controller_header">
+                    <div class="o_gantt_controller_buttons btn-toolbar">
+                        <button class="btn btn-primary" t-on-click="createTask">New</button>
+                        <button class="btn btn-secondary" t-on-click="refresh">Refresh</button>
+                    </div>
+                    <div class="o_gantt_controller_scales btn-group" role="group">
+                        <button t-attf-class="btn {{ state.scale === 'day' ? 'btn-primary' : 'btn-secondary' }}" t-on-click="() => onScaleChange('day')">Day</button>
+                        <button t-attf-class="btn {{ state.scale === 'week' ? 'btn-primary' : 'btn-secondary' }}" t-on-click="() => onScaleChange('week')">Week</button>
+                        <button t-attf-class="btn {{ state.scale === 'month' ? 'btn-primary' : 'btn-secondary' }}" t-on-click="() => onScaleChange('month')">Month</button>
+                        <button t-attf-class="btn {{ state.scale === 'year' ? 'btn-primary' : 'btn-secondary' }}" t-on-click="() => onScaleChange('year')">Year</button>
+                    </div>
+                    <div class="o_gantt_controller_groupby">
+                        <span class="text-muted me-2">Group By:</span>
+                        <select class="form-select o_input" t-on-change="(ev) => onGroupByChange(ev.target.value)">
+                            <option value="project_id" t-att-selected="state.groupBy === 'project_id'">Project</option>
+                            <option value="user_id" t-att-selected="state.groupBy === 'user_id'">Assignee</option>
+                            <option value="stage_id" t-att-selected="state.groupBy === 'stage_id'">Stage</option>
+                        </select>
+                    </div>
+                </div>
+                <GanttRenderer
+                    data="state.ganttData"
+                    scale="state.scale"
+                    t-on-task-updated.stop.prevent="onTaskUpdated"
+                    t-on-task-clicked.stop.prevent="onTaskClicked"
+                />
+            </div>
+        </Layout>
+    </t>
+
+    <t t-name="project_task_gantt.GanttRenderer" owl="1">
+        <div class="o_gantt_renderer_wrapper" t-ref="root"
+             t-on-mousedown.passive="onMouseDown"
+             t-on-mousemove="onMouseMove"
+             t-on-mouseup="onMouseUp"
+             t-on-mouseleave="() => { state.draggedTask = null; state.tooltip.visible = false; }"
+             t-on-dblclick="onDoubleClick"
+             t-on-wheel.prevent="onWheel">
+            <div class="o_gantt_renderer_container" t-ref="ganttContainer">
+                <canvas t-ref="ganttCanvas"></canvas>
+                <div t-if="state.tooltip.visible" class="o_gantt_tooltip"
+                     t-attf-style="left: {{ state.tooltip.x }}px; top: {{ state.tooltip.y }}px; transform: translate(15px, 15px);">
+                    <t t-esc="state.tooltip.content"/>
+                </div>
+            </div>
+        </div>
+    </t>
+
+</templates>
