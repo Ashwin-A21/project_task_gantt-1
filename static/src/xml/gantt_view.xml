@@ -19,13 +19,13 @@
             <div class="o_gantt_controller_header border-bottom p-2 bg-view">
                 <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
                     <div class="o_gantt_controller_buttons btn-toolbar gap-1">
-                        <button class="btn btn-primary btn-sm" t-on-click="createTask" title="Create New Task">
+                        <button class="btn btn-primary btn-sm" t-on-click="() => this.createTask()" title="Create New Task">
                             <i class="fa fa-plus"/> New
                         </button>
-                        <button class="btn btn-secondary btn-sm" t-on-click="refresh" title="Refresh Data">
+                        <button class="btn btn-secondary btn-sm" t-on-click="() => this.refresh()" title="Refresh Data">
                             <i class="fa fa-refresh"/> Refresh
                         </button>
-                        <button class="btn btn-secondary btn-sm" t-on-click="exportToCSV" title="Export to CSV">
+                        <button class="btn btn-secondary btn-sm" t-on-click="() => this.exportToCSV()" title="Export to CSV">
                             <i class="fa fa-download"/> Export
                         </button>
                     </div>
@@ -33,25 +33,25 @@
                     <div class="o_gantt_controller_scales btn-group btn-group-sm" role="group">
                         <button 
                             t-attf-class="btn btn-sm {{ state.scale === 'day' ? 'btn-primary' : 'btn-outline-secondary' }}" 
-                            t-on-click="() => onScaleChange('day')"
+                            t-on-click="() => this.onScaleChange('day')"
                             title="Day View">
                             Day
                         </button>
                         <button 
                             t-attf-class="btn btn-sm {{ state.scale === 'week' ? 'btn-primary' : 'btn-outline-secondary' }}" 
-                            t-on-click="() => onScaleChange('week')"
+                            t-on-click="() => this.onScaleChange('week')"
                             title="Week View">
                             Week
                         </button>
                         <button 
                             t-attf-class="btn btn-sm {{ state.scale === 'month' ? 'btn-primary' : 'btn-outline-secondary' }}" 
-                            t-on-click="() => onScaleChange('month')"
+                            t-on-click="() => this.onScaleChange('month')"
                             title="Month View">
                             Month
                         </button>
                         <button 
                             t-attf-class="btn btn-sm {{ state.scale === 'year' ? 'btn-primary' : 'btn-outline-secondary' }}" 
-                            t-on-click="() => onScaleChange('year')"
+                            t-on-click="() => this.onScaleChange('year')"
                             title="Year View">
                             Year
                         </button>
@@ -62,7 +62,7 @@
                         <select 
                             class="form-select form-select-sm o_input" 
                             style="width: auto;"
-                            t-on-change="(ev) => onGroupByChange(ev.target.value)">
+                            t-on-change="(ev) => this.onGroupByChange(ev)">
                             <option value="project_id" t-att-selected="state.groupBy === 'project_id'">
                                 Project
                             </option>
@@ -91,8 +91,8 @@
                     t-if="!state.isLoading"
                     data="state.ganttData"
                     scale="state.scale"
-                    t-on-task-updated.stop.prevent="onTaskUpdated"
-                    t-on-task-clicked.stop.prevent="onTaskClicked"
+                    t-on-task-updated.stop.prevent="(ev) => this.onTaskUpdated(ev)"
+                    t-on-task-clicked.stop.prevent="(ev) => this.onTaskClicked(ev)"
                 />
             </div>
 
@@ -114,12 +114,12 @@
         <div 
             class="o_gantt_renderer_container w-100 h-100" 
             t-ref="root"
-            t-on-mousedown.prevent="onMouseDown"
-             t-on-mousemove="onMouseMove"
-             t-on-mouseup="onMouseUp"
-             t-on-mouseleave="onMouseLeave"
-             t-on-dblclick="onDoubleClick"
-             t-on-wheel.prevent="onWheel">
+            t-on-mousedown.prevent="(ev) => this.onMouseDown(ev)"
+            t-on-mousemove="(ev) => this.onMouseMove(ev)"
+            t-on-mouseup="(ev) => this.onMouseUp(ev)"
+            t-on-mouseleave="() => this.onMouseLeave()"
+            t-on-dblclick="(ev) => this.onDoubleClick(ev)"
+            t-on-wheel.prevent="(ev) => this.onWheel(ev)">
             
             <div class="position-relative w-100 h-100" t-ref="ganttContainer">
                 <canvas t-ref="ganttCanvas" class="w-100 h-100"></canvas>

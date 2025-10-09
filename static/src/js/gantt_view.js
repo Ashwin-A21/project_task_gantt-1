@@ -63,6 +63,7 @@ export class GanttController extends Component {
         } catch (error) {
             this.notification.add("Failed to update task", { type: "danger" });
             console.error("Task update error:", error);
+            await this.loadGanttData(); // Reload to revert changes on error
         }
     }
 
@@ -82,8 +83,8 @@ export class GanttController extends Component {
         this.state.scale = scale; 
     }
 
-    async onGroupByChange(groupBy) {
-        this.state.groupBy = groupBy;
+    async onGroupByChange(ev) {
+        this.state.groupBy = ev.target.value;
         await this.loadGanttData();
     }
 
@@ -131,14 +132,6 @@ export class GanttController extends Component {
         a.download = `gantt_chart_${new Date().toISOString().split('T')[0]}.csv`;
         a.click();
         window.URL.revokeObjectURL(url);
-    }
-
-    zoomIn() {
-        this.trigger('zoom-change', { direction: 'in' });
-    }
-
-    zoomOut() {
-        this.trigger('zoom-change', { direction: 'out' });
     }
 }
 
