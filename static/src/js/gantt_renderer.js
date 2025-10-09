@@ -581,7 +581,18 @@ export class GanttRenderer extends Component {
             this.state.zoom = Math.max(0.5, Math.min(2.0, this.state.zoom * zoomDelta));
         } else {
             // Regular scrolling
-            this.state.scrollX += e.deltaX;
-            this.state.scrollY += e.deltaY;
-            
-            //
+            this.state.scrollX = Math.max(0, this.state.scrollX + e.deltaX);
+            this.state.scrollY = Math.max(0, this.state.scrollY + e.deltaY);
+        }
+        
+        this.scheduleRedraw();
+    }
+
+    onMouseLeave() {
+        this.state.draggedTask = null;
+        this.state.tooltip.visible = false;
+        this.state.hoveredTask = null;
+        this.canvasRef.el.style.cursor = 'default';
+        this.scheduleRedraw();
+    }
+}
