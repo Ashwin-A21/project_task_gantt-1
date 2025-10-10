@@ -51,6 +51,49 @@ class ProjectTask(models.Model):
             _logger.error(f"Failed to parse datetime string '{date_string}': {e}")
             raise ValidationError(f"Invalid datetime format: {date_string}")
 
+    def _sync_date_fields(self, vals):
+        """
+        Synchronize all date fields to ensure consistency
+        """
+        # Sync task_end_date with date_deadline - keep the same time
+        if vals.get('task_end_date'):
+            if 'date_deadline' not in vals:
+                vals['date_deadline'] = vals['task_end_date'].date()
+            # Also sync with date_end if it exists, keeping exact same datetime
+            if hasattr(self, 'date_end') and 'date_end' not in vals:
+                vals['date_end'] = vals['task_end_date']
+        
+        # Sync date_deadline with task_end_date - preserve existing time if possible
+        if vals.get('date_deadline') and 'task_end_date' not in vals:
+            if isinstance(vals['date_deadline'], str):
+                vals['date_deadline'] = fields.Date.from_string(vals['date_deadline'])
+            
+            # Try to preserve existing task_end_date time, otherwise use end of day
+            existing_end_time = None
+            if hasattr(self, 'task_end_date') and self.task_end_date:
+                existing_end_time = self.task_end_date.time()
+            
+            deadline_datetime = fields.Datetime.to_datetime(vals['date_deadline'])
+            if existing_end_time:
+                # Preserve the existing time
+                vals['task_end_date'] = deadline_datetime.replace(
+                    hour=existing_end_time.hour,
+                    minute=existing_end_time.minute,
+                    second=existing_end_time.second
+                )
+            else:
+                # Use end of day (17:00) as default
+                vals['task_end_date'] = deadline_datetime.replace(hour=17, minute=0, second=0)
+            
+            # Also sync with date_end if it exists
+            if hasattr(self, 'date_end') and 'date_end' not in vals:
+                vals['date_end'] = vals['task_end_date']
+        
+        # Sync task_start_date with date_start
+        if vals.get('task_start_date'):
+            if hasattr(self, 'date_start') and 'date_start' not in vals:
+                vals['date_start'] = vals['task_start_date']
+
     @api.depends('task_start_date', 'task_end_date')
     def _compute_gantt_duration(self):
         """Compute the duration in days between start and end dates"""
@@ -65,16 +108,32 @@ class ProjectTask(models.Model):
     def _onchange_task_end_date_updates_deadline(self):
         """Synchronize task_end_date with deadline field"""
         if self.task_end_date:
+            # Keep the same date for deadline to avoid time discrepancies
             self.date_deadline = self.task_end_date.date()
+            # Also sync with date_end if it exists, keeping exact same datetime
+            if hasattr(self, 'date_end'):
+                self.date_end = self.task_end_date
 
     @api.onchange('date_deadline')
     def _onchange_deadline_updates_task_end_date(self):
         """Synchronize deadline with task_end_date field"""
-        if self.date_deadline and not self.task_end_date:
-            # Set end of day for the deadline
-            self.task_end_date = fields.Datetime.to_datetime(self.date_deadline).replace(
-                hour=17, minute=0, second=0
-            )
+        if self.date_deadline:
+            # If task_end_date already exists, preserve its time
+            if self.task_end_date:
+                # Preserve the existing time
+                self.task_end_date = fields.Datetime.to_datetime(self.date_deadline).replace(
+                    hour=self.task_end_date.hour,
+                    minute=self.task_end_date.minute,
+                    second=self.task_end_date.second
+                )
+            else:
+                # Set end of day for the deadline (17:00)
+                self.task_end_date = fields.Datetime.to_datetime(self.date_deadline).replace(
+                    hour=17, minute=0, second=0
+                )
+            # Also sync with date_end if it exists
+            if hasattr(self, 'date_end'):
+                self.date_end = self.task_end_date
 
     @api.constrains('task_start_date', 'task_end_date')
     def _check_dates(self):
@@ -91,22 +150,15 @@ class ProjectTask(models.Model):
         """Override create to sync deadline with task_end_date"""
         for vals in vals_list:
             try:
-                # Handle task_end_date
+                # Parse datetime strings first
                 if vals.get('task_end_date'):
                     vals['task_end_date'] = self._parse_datetime_string(vals['task_end_date'])
-                    if not vals.get('date_deadline'):
-                        vals['date_deadline'] = vals['task_end_date'].date()
                 
-                # Handle task_start_date
                 if vals.get('task_start_date'):
                     vals['task_start_date'] = self._parse_datetime_string(vals['task_start_date'])
                 
-                # Handle date_deadline
-                if vals.get('date_deadline') and not vals.get('task_end_date'):
-                    if isinstance(vals['date_deadline'], str):
-                        vals['date_deadline'] = fields.Date.from_string(vals['date_deadline'])
-                    deadline_datetime = fields.Datetime.to_datetime(vals['date_deadline'])
-                    vals['task_end_date'] = deadline_datetime.replace(hour=17, minute=0, second=0)
+                # Synchronize all date fields
+                self._sync_date_fields(vals)
                     
             except Exception as e:
                 _logger.error(f"Error processing dates in create: {str(e)}", exc_info=True)
@@ -117,22 +169,15 @@ class ProjectTask(models.Model):
     def write(self, vals):
         """Override write to sync deadline with task_end_date"""
         try:
-            # Handle task_end_date
+            # Parse datetime strings first
             if vals.get('task_end_date'):
                 vals['task_end_date'] = self._parse_datetime_string(vals['task_end_date'])
-                if 'date_deadline' not in vals:
-                    vals['date_deadline'] = vals['task_end_date'].date()
             
-            # Handle task_start_date
             if vals.get('task_start_date'):
                 vals['task_start_date'] = self._parse_datetime_string(vals['task_start_date'])
             
-            # Handle date_deadline
-            if vals.get('date_deadline') and 'task_end_date' not in vals:
-                if isinstance(vals['date_deadline'], str):
-                    vals['date_deadline'] = fields.Date.from_string(vals['date_deadline'])
-                deadline_datetime = fields.Datetime.to_datetime(vals['date_deadline'])
-                vals['task_end_date'] = deadline_datetime.replace(hour=17, minute=0, second=0)
+            # Synchronize all date fields
+            self._sync_date_fields(vals)
                 
         except Exception as e:
             _logger.error(f"Error processing dates in write: {str(e)}", exc_info=True)
@@ -194,43 +239,52 @@ class ProjectTask(models.Model):
                 _logger.info("No tasks found matching criteria")
                 return []
 
-            # Group tasks by the specified field
+            # Group tasks by the specified field with proper handling of many2many and selections
             grouped_data = {}
             
-            for task in tasks_data:
-                group_field_value = task.get(group_by)
-                
-                # Handle different field types
-                if isinstance(group_field_value, (list, tuple)) and len(group_field_value) > 0:
-                    # Many2one or Many2many field
-                    if isinstance(group_field_value[0], (list, tuple)):
-                        # Many2many - take first relation
-                        group_key = group_field_value[0][0] if group_field_value[0] else 'unassigned'
-                        group_name = group_field_value[0][1] if group_field_value[0] else 'Unassigned'
-                    else:
-                        # Many2one
-                        group_key = group_field_value[0]
-                        group_name = group_field_value[1]
-                elif isinstance(group_field_value, bool) and not group_field_value:
-                    group_key = 'unassigned'
-                    group_name = 'Unassigned'
-                elif group_field_value is False:
-                    group_key = 'unassigned'
-                    group_name = 'Unassigned'
-                else:
-                    # Selection or other field types
-                    group_key = str(group_field_value)
-                    group_name = str(group_field_value).replace('_', ' ').title()
+            field_def = self.env['project.task']._fields.get(group_by)
+            field_type = getattr(field_def, 'type', 'char')
+            selection_map = {}
+            if field_type == 'selection' and getattr(field_def, 'selection', None):
+                selection_map = dict(field_def.selection)
 
-                # Initialize group if not exists
-                if group_key not in grouped_data:
-                    grouped_data[group_key] = {
-                        'id': group_key, 
-                        'name': group_name, 
+            def add_to_group(g_key, g_name, t):
+                if g_key not in grouped_data:
+                    grouped_data[g_key] = {
+                        'id': g_key,
+                        'name': g_name,
                         'tasks': []
                     }
+                grouped_data[g_key]['tasks'].append(t)
 
-                # Add task to group
+            # Preload names for many2many user_ids when needed
+            def resolve_m2m_names(model_name, ids):
+                if not ids:
+                    return {}
+                records = self.env[model_name].sudo().browse(ids)
+                return {rec.id: rec.display_name for rec in records}
+
+            # Collect ids for potential m2m lookup first pass
+            m2m_ids = set()
+            if field_type == 'many2many':
+                for task in tasks_data:
+                    raw = task.get(group_by) or []
+                    if raw and isinstance(raw, list) and (len(raw) == 0 or isinstance(raw[0], int)):
+                        m2m_ids.update(raw)
+
+            id_to_name = {}
+            if field_type == 'many2many':
+                model_map = {
+                    'user_ids': 'res.users',
+                    'partner_id': 'res.partner',
+                }
+                model_name = model_map.get(group_by, 'res.users')
+                id_to_name = resolve_m2m_names(model_name, list(m2m_ids))
+
+            for task in tasks_data:
+                raw_value = task.get(group_by)
+
+                # Build task payload
                 task_dict = {
                     'id': task['id'],
                     'name': task['name'],
@@ -242,7 +296,41 @@ class ProjectTask(models.Model):
                     'description': task.get('description', '') or '',
                 }
                 
-                grouped_data[group_key]['tasks'].append(task_dict)
+                if field_type == 'many2one':
+                    if raw_value:
+                        g_key = raw_value[0]
+                        g_name = raw_value[1]
+                    else:
+                        g_key = 'unassigned'
+                        g_name = 'Unassigned'
+                    add_to_group(g_key, g_name, task_dict)
+
+                elif field_type == 'many2many':
+                    ids_list = []
+                    if raw_value and isinstance(raw_value, list):
+                        if raw_value and isinstance(raw_value[0], int):
+                            ids_list = raw_value
+                        elif raw_value and isinstance(raw_value[0], (list, tuple)):
+                            ids_list = [rid[0] for rid in raw_value if rid]
+                    if not ids_list:
+                        add_to_group('unassigned', 'Unassigned', task_dict)
+                    else:
+                        for rid in ids_list:
+                            g_key = f"{group_by}:{rid}"
+                            g_name = id_to_name.get(rid, f"ID {rid}")
+                            add_to_group(g_key, g_name, task_dict)
+
+                elif field_type == 'selection':
+                    key = raw_value if raw_value is not False else 'unassigned'
+                    label = selection_map.get(raw_value, 'Unassigned') if raw_value else 'Unassigned'
+                    add_to_group(str(key), label, task_dict)
+
+                else:
+                    # Char, integer, etc.
+                    if not raw_value:
+                        add_to_group('unassigned', 'Unassigned', task_dict)
+                    else:
+                        add_to_group(str(raw_value), str(raw_value).replace('_', ' ').title(), task_dict)
 
             # Sort groups by name and return as list
             result = sorted(grouped_data.values(), key=lambda x: x['name'])
@@ -267,3 +355,46 @@ class ProjectTask(models.Model):
             'domain': [('project_id', '=', self.project_id.id)],
             'context': {'group_by': 'stage_id'},
         }
+
+    def action_sync_dates(self):
+        """Action to manually sync all date fields for current task"""
+        self.ensure_one()
+        vals = {}
+        
+        # Sync task_end_date with date_deadline
+        if self.task_end_date and self.date_deadline:
+            if self.task_end_date.date() != self.date_deadline:
+                vals['date_deadline'] = self.task_end_date.date()
+        
+        # Sync date_deadline with task_end_date
+        if self.date_deadline and self.task_end_date:
+            if self.task_end_date.date() != self.date_deadline:
+                # Preserve existing time
+                deadline_datetime = fields.Datetime.to_datetime(self.date_deadline)
+                vals['task_end_date'] = deadline_datetime.replace(
+                    hour=self.task_end_date.hour,
+                    minute=self.task_end_date.minute,
+                    second=self.task_end_date.second
+                )
+        
+        if vals:
+            self.write(vals)
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'Dates Synchronized',
+                    'message': 'All date fields have been synchronized.',
+                    'type': 'success',
+                }
+            }
+        else:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': 'No Changes Needed',
+                    'message': 'All date fields are already synchronized.',
+                    'type': 'info',
+                }
+            }

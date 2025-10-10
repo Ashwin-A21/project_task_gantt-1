@@ -20,6 +20,7 @@ export class GanttController extends Component {
             groupBy: this.props.groupBy || 'project_id',
             ganttData: [],
             isLoading: false,
+            editable: true,
         });
 
         onWillStart(async () => await this.loadGanttData());
@@ -54,10 +55,21 @@ export class GanttController extends Component {
     async onTaskUpdated(ev) {
         const { taskId, startDate, endDate } = ev.detail;
         try {
-            await this.orm.write(this.props.resModel, [taskId], {
-                task_start_date: startDate instanceof Date ? startDate.toISOString() : startDate,
-                task_end_date: endDate instanceof Date ? endDate.toISOString() : endDate,
-            });
+            // Format dates properly for Odoo
+            const formatDateForOdoo = (date) => {
+                if (!date) return false;
+                if (date instanceof Date) {
+                    return date.toISOString().replace('Z', '').replace('T', ' ');
+                }
+                return date;
+            };
+
+            const updateData = {
+                task_start_date: formatDateForOdoo(startDate),
+                task_end_date: formatDateForOdoo(endDate),
+            };
+
+            await this.orm.write(this.props.resModel, [taskId], updateData);
             this.notification.add("Task updated successfully", { type: "success" });
             await this.loadGanttData();
         } catch (error) {
@@ -75,7 +87,19 @@ export class GanttController extends Component {
             res_id: taskId,
             views: [[false, 'form']],
             target: 'new',
-            context: { create: false },
+            context: { 
+                create: false,
+                // Ensure we're working with the correct date fields
+                default_task_start_date: true,
+                default_task_end_date: true,
+                // Force reload of the record to get latest data
+                force_reload: true,
+            },
+        }, {
+            onClose: async () => {
+                // Reload Gantt data after modal closes to sync any changes
+                await this.loadGanttData();
+            }
         });
     }
 
@@ -95,7 +119,8 @@ export class GanttController extends Component {
             views: [[false, 'form']],
             target: 'new',
             context: {
-                default_task_start_date: new Date().toISOString(),
+                // Provide Odoo-compatible datetime format without timezone suffix
+                default_task_start_date: new Date().toISOString().replace('Z','').replace('T',' ').split('.')[0],
             },
         }, {
             onClose: async () => {
@@ -106,6 +131,10 @@ export class GanttController extends Component {
 
     async refresh() { 
         await this.loadGanttData(); 
+    }
+
+    toggleEditable() {
+        this.state.editable = !this.state.editable;
     }
 
     exportToCSV() {

@@ -57,6 +57,15 @@
                         </button>
                     </div>
 
+                    <div class="o_gantt_controller_mode btn-group btn-group-sm" role="group">
+                        <button 
+                            t-attf-class="btn btn-sm {{ state.editable ? 'btn-outline-secondary' : 'btn-primary' }}" 
+                            t-on-click="() => this.toggleEditable()"
+                            title="Toggle Edit/View Mode">
+                            <t t-esc="state.editable ? 'View Only' : 'Editable'"/>
+                        </button>
+                    </div>
+
                     <div class="o_gantt_controller_groupby d-flex align-items-center gap-2">
                         <label class="text-muted mb-0 small">Group By:</label>
                         <select 
@@ -91,8 +100,10 @@
                     t-if="!state.isLoading"
                     data="state.ganttData"
                     scale="state.scale"
+                    editable="state.editable"
                     t-on-task-updated.stop.prevent="(ev) => this.onTaskUpdated(ev)"
                     t-on-task-clicked.stop.prevent="(ev) => this.onTaskClicked(ev)"
+                    t-on-scale-change.stop.prevent="(ev) => this.onScaleChange(ev.detail.scale)"
                 />
             </div>
 
@@ -100,7 +111,7 @@
                 <div class="d-flex justify-content-between align-items-center">
                     <span>
                         <i class="fa fa-info-circle"/> 
-                        <strong>Tip:</strong> Drag tasks to reschedule, double-click to edit, scroll to navigate, Ctrl+Wheel to zoom
+                        <strong>Tip:</strong> Drag tasks to reschedule, double-click to edit, wheel to zoom, Ctrl+Wheel to navigate, Shift+Wheel to change time scale
                     </span>
                     <span>
                         Total: <strong t-esc="state.ganttData.reduce((acc, g) => acc + g.tasks.length, 0)"/> tasks

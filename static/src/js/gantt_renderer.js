@@ -7,6 +7,7 @@ export class GanttRenderer extends Component {
     static props = {
         data: { type: Array },
         scale: { type: String },
+        editable: { type: Boolean, optional: true },
     };
 
     setup() {
@@ -54,7 +55,16 @@ export class GanttRenderer extends Component {
     }
 
     get cellWidth() {
-        return Math.max(this.minCellWidth, Math.min(this.maxCellWidth, this.baseCellWidth * this.state.zoom));
+        // Adjust base width per scale for better zooming behavior
+        const scale = this.props.scale || 'month';
+        const scaleFactor = (
+            scale === 'day' ? 2.0 :
+            scale === 'week' ? 1.2 :
+            scale === 'month' ? 1.0 :
+            0.6 // year
+        );
+        const width = this.baseCellWidth * scaleFactor * this.state.zoom;
+        return Math.max(this.minCellWidth, Math.min(this.maxCellWidth, width));
     }
 
     get cellHeight() {
@@ -144,11 +154,17 @@ export class GanttRenderer extends Component {
             if (!maxDate || end > maxDate) maxDate = end;
         }));
 
-        if (!minDate || !maxDate) return { start: null, end: null };
+        if (!minDate || !maxDate) {
+            // If no tasks, show current month with some padding
+            const today = new Date();
+            minDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            maxDate = new Date(today.getFullYear(), today.getMonth() + 3, 0);
+            return { start: minDate, end: maxDate };
+        }
 
-        // Add padding to date range
-        minDate = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-        maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 2, 0);
+        // Add more padding to date range for better navigation
+        minDate = new Date(minDate.getFullYear(), minDate.getMonth() - 1, 1);
+        maxDate = new Date(maxDate.getFullYear(), maxDate.getMonth() + 6, 0);
 
         return { start: minDate, end: maxDate };
     }
@@ -159,14 +175,42 @@ export class GanttRenderer extends Component {
 
         const days = Math.ceil((dates.end - dates.start) / 86400000);
 
-        // Vertical grid lines (dates)
-        for (let i = 0; i <= days; i++) {
-            const x = this.sidebarWidth + i * this.cellWidth - this.state.scrollX;
-            if (x >= this.sidebarWidth && x <= rect.width) {
-                ctx.beginPath();
-                ctx.moveTo(x, this.headerHeight);
-                ctx.lineTo(x, rect.height);
-                ctx.stroke();
+        // Vertical grid lines (dates) with scale support
+        const scale = this.props.scale || 'month';
+        if (scale === 'day' || scale === 'month') {
+            for (let i = 0; i <= days; i++) {
+                const x = this.sidebarWidth + i * this.cellWidth - this.state.scrollX;
+                if (x >= this.sidebarWidth && x <= rect.width) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, this.headerHeight);
+                    ctx.lineTo(x, rect.height);
+                    ctx.stroke();
+                }
+            }
+        } else if (scale === 'week') {
+            let current = new Date(dates.start);
+            current.setDate(current.getDate() - current.getDay());
+            while (current <= dates.end) {
+                const x = this.dateToX(current, dates);
+                if (x >= this.sidebarWidth && x <= rect.width) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, this.headerHeight);
+                    ctx.lineTo(x, rect.height);
+                    ctx.stroke();
+                }
+                current.setDate(current.getDate() + 7);
+            }
+        } else if (scale === 'year') {
+            let current = new Date(dates.start.getFullYear(), dates.start.getMonth(), 1);
+            while (current <= dates.end) {
+                const x = this.dateToX(current, dates);
+                if (x >= this.sidebarWidth && x <= rect.width) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, this.headerHeight);
+                    ctx.lineTo(x, rect.height);
+                    ctx.stroke();
+                }
+                current.setMonth(current.getMonth() + 1);
             }
         }
 
@@ -217,53 +261,89 @@ export class GanttRenderer extends Component {
         ctx.rect(this.sidebarWidth, 0, rect.width - this.sidebarWidth, this.headerHeight);
         ctx.clip();
 
-        // Draw months
+        // Draw header according to scale
         ctx.fillStyle = '#495057';
         ctx.font = 'bold 13px Arial';
         ctx.textBaseline = 'top';
-        
-        let current = new Date(dates.start);
-        while (current <= dates.end) {
-            const monthX = this.dateToX(current, dates);
-            const nextMonth = new Date(current.getFullYear(), current.getMonth() + 1, 1);
-            const monthEndX = this.dateToX(nextMonth, dates);
-            
-            if (monthEndX > this.sidebarWidth && monthX < rect.width) {
+        const scale = this.props.scale || 'month';
+        if (scale === 'day') {
+            let current = new Date(dates.start);
+            while (current <= dates.end) {
+                const monthX = this.dateToX(new Date(current.getFullYear(), current.getMonth(), 1), dates);
                 const monthName = current.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-                const textWidth = ctx.measureText(monthName).width;
-                const textX = Math.max(this.sidebarWidth + 5, monthX + 5);
-                
-                ctx.fillText(monthName, textX, 15);
+                ctx.fillText(monthName, Math.max(this.sidebarWidth + 5, monthX + 5), 15);
+                current.setMonth(current.getMonth() + 1);
             }
-            
-            current.setMonth(current.getMonth() + 1);
-        }
-
-        // Draw days
-        ctx.font = '11px Arial';
-        ctx.fillStyle = '#6c757d';
-        
-        let dayCounter = new Date(dates.start);
-        const days = Math.ceil((dates.end - dates.start) / 86400000);
-        
-        for (let i = 0; i <= days; i++) {
-            const dayX = this.dateToX(dayCounter, dates);
-            if (dayX >= this.sidebarWidth && dayX < rect.width) {
+            ctx.font = '11px Arial';
+            ctx.fillStyle = '#6c757d';
+            let dayCounter = new Date(dates.start);
+            const days = Math.ceil((dates.end - dates.start) / 86400000);
+            for (let i = 0; i <= days; i++) {
+                const dayX = this.dateToX(dayCounter, dates);
+                const day = dayCounter.getDate();
+                const dayOfWeek = dayCounter.toLocaleDateString('en-US', { weekday: 'short' });
+                ctx.fillText(day.toString(), dayX + 5, 45);
+                ctx.fillText(dayOfWeek, dayX + 5, 60);
+                dayCounter.setDate(dayCounter.getDate() + 1);
+            }
+        } else if (scale === 'week') {
+            let current = new Date(dates.start);
+            while (current <= dates.end) {
+                const monthX = this.dateToX(new Date(current.getFullYear(), current.getMonth(), 1), dates);
+                const monthName = current.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                ctx.fillText(monthName, Math.max(this.sidebarWidth + 5, monthX + 5), 15);
+                current.setMonth(current.getMonth() + 1);
+            }
+            ctx.font = '11px Arial';
+            ctx.fillStyle = '#6c757d';
+            let weekStart = new Date(dates.start);
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            while (weekStart <= dates.end) {
+                const weekX = this.dateToX(weekStart, dates);
+                const weekLabel = `W${this.getWeekNumber(weekStart)}`;
+                ctx.fillText(weekLabel, weekX + 5, 50);
+                weekStart.setDate(weekStart.getDate() + 7);
+            }
+        } else if (scale === 'month') {
+            let current = new Date(dates.start);
+            while (current <= dates.end) {
+                const monthX = this.dateToX(new Date(current.getFullYear(), current.getMonth(), 1), dates);
+                const monthName = current.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                ctx.fillText(monthName, Math.max(this.sidebarWidth + 5, monthX + 5), 15);
+                current.setMonth(current.getMonth() + 1);
+            }
+            ctx.font = '11px Arial';
+            ctx.fillStyle = '#6c757d';
+            let dayCounter = new Date(dates.start);
+            const days = Math.ceil((dates.end - dates.start) / 86400000);
+            for (let i = 0; i <= days; i++) {
+                const dayX = this.dateToX(dayCounter, dates);
                 const isWeekend = dayCounter.getDay() === 0 || dayCounter.getDay() === 6;
-                
                 if (isWeekend) {
                     ctx.fillStyle = '#e9ecef';
                     ctx.fillRect(dayX, this.headerHeight, this.cellWidth, rect.height - this.headerHeight);
                     ctx.fillStyle = '#6c757d';
                 }
-                
                 const day = dayCounter.getDate();
-                const dayOfWeek = dayCounter.toLocaleDateString('en-US', { weekday: 'short' });
-                
-                ctx.fillText(day.toString(), dayX + 5, 45);
-                ctx.fillText(dayOfWeek, dayX + 5, 60);
+                ctx.fillText(day.toString(), dayX + 5, 50);
+                dayCounter.setDate(dayCounter.getDate() + 1);
             }
-            dayCounter.setDate(dayCounter.getDate() + 1);
+        } else if (scale === 'year') {
+            let currentYear = dates.start.getFullYear();
+            while (currentYear <= dates.end.getFullYear()) {
+                const yearX = this.dateToX(new Date(currentYear, 0, 1), dates);
+                ctx.fillText(String(currentYear), Math.max(this.sidebarWidth + 5, yearX + 5), 15);
+                currentYear++;
+            }
+            ctx.font = '11px Arial';
+            ctx.fillStyle = '#6c757d';
+            let current = new Date(dates.start.getFullYear(), dates.start.getMonth(), 1);
+            while (current <= dates.end) {
+                const monthX = this.dateToX(current, dates);
+                const monthName = current.toLocaleDateString('en-US', { month: 'short' });
+                ctx.fillText(monthName, monthX + 5, 50);
+                current.setMonth(current.getMonth() + 1);
+            }
         }
 
         ctx.restore();
@@ -466,13 +546,36 @@ export class GanttRenderer extends Component {
     }
 
     dateToX(date, dates) {
+        const scale = this.props.scale || 'month';
         const days = (date - dates.start) / 86400000;
-        return this.sidebarWidth + days * this.cellWidth - this.state.scrollX;
+        if (scale === 'day' || scale === 'month') {
+            return this.sidebarWidth + days * this.cellWidth - this.state.scrollX;
+        } else if (scale === 'week') {
+            const weeks = days / 7.0;
+            return this.sidebarWidth + weeks * this.cellWidth - this.state.scrollX;
+        } else {
+            // year: months resolution
+            const months = (date.getFullYear() - dates.start.getFullYear()) * 12 + (date.getMonth() - dates.start.getMonth()) + (date.getDate()-1)/30;
+            return this.sidebarWidth + months * this.cellWidth - this.state.scrollX;
+        }
     }
 
     xToDate(x, dates) {
-        const days = (x - this.sidebarWidth + this.state.scrollX) / this.cellWidth;
-        return new Date(dates.start.getTime() + days * 86400000);
+        const scale = this.props.scale || 'month';
+        if (scale === 'day' || scale === 'month') {
+            const days = (x - this.sidebarWidth + this.state.scrollX) / this.cellWidth;
+            return new Date(dates.start.getTime() + days * 86400000);
+        } else if (scale === 'week') {
+            const weeks = (x - this.sidebarWidth + this.state.scrollX) / this.cellWidth;
+            const days = weeks * 7.0;
+            return new Date(dates.start.getTime() + days * 86400000);
+        } else {
+            // year scale
+            const months = (x - this.sidebarWidth + this.state.scrollX) / this.cellWidth;
+            const start = new Date(dates.start.getFullYear(), dates.start.getMonth(), 1);
+            start.setMonth(start.getMonth() + months);
+            return start;
+        }
     }
 
     dispatchEvent(name, detail) {
@@ -480,6 +583,9 @@ export class GanttRenderer extends Component {
     }
 
     onMouseDown(e) {
+        if (!this.props.editable) {
+            return;
+        }
         const rect = this.canvasRef.el.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -515,8 +621,9 @@ export class GanttRenderer extends Component {
                 .find(t => t.id === this.state.draggedTask.id);
             
             if (taskInUI) {
-                taskInUI.start_date = newStartDate.toISOString();
-                taskInUI.end_date = newEndDate.toISOString();
+                // Format dates consistently for Odoo (without timezone suffix)
+                taskInUI.start_date = newStartDate.toISOString().replace('Z', '');
+                taskInUI.end_date = newEndDate.toISOString().replace('Z', '');
                 this.scheduleRedraw();
             }
         } else {
@@ -572,20 +679,51 @@ export class GanttRenderer extends Component {
         }
     }
 
+    getWeekNumber(date) {
+        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const dayNum = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+        return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+    }
+
     onWheel(e) {
         e.preventDefault();
         
         if (e.ctrlKey || e.metaKey) {
-            // Zoom with Ctrl/Cmd + wheel
-            const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
-            this.state.zoom = Math.max(0.5, Math.min(2.0, this.state.zoom * zoomDelta));
-        } else {
-            // Regular scrolling
-            this.state.scrollX = Math.max(0, this.state.scrollX + e.deltaX);
+            // Navigate with Ctrl/Cmd + wheel
+            this.state.scrollX = Math.max(0, this.state.scrollX + (e.deltaX || e.deltaY));
             this.state.scrollY = Math.max(0, this.state.scrollY + e.deltaY);
+        } else if (e.shiftKey) {
+            // Shift + wheel for vertical time scale navigation
+            this.handleVerticalTimeScaleNavigation(e.deltaY);
+        } else {
+            // Regular wheel for zoom
+            const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
+            const oldZoom = this.state.zoom;
+            this.state.zoom = Math.max(0.5, Math.min(2.0, this.state.zoom * zoomDelta));
+            
+            // Adjust scroll position to keep content centered when zooming
+            const zoomRatio = this.state.zoom / oldZoom;
+            this.state.scrollX = this.state.scrollX * zoomRatio;
+            this.state.scrollY = this.state.scrollY * zoomRatio;
         }
         
         this.scheduleRedraw();
+    }
+
+    handleVerticalTimeScaleNavigation(deltaY) {
+        const scales = ['day', 'week', 'month', 'year'];
+        const currentScale = this.props.scale || 'month';
+        const currentIndex = scales.indexOf(currentScale);
+        
+        if (deltaY > 0 && currentIndex > 0) {
+            // Scroll up - go to smaller time scale
+            this.dispatchEvent('scale-change', { scale: scales[currentIndex - 1] });
+        } else if (deltaY < 0 && currentIndex < scales.length - 1) {
+            // Scroll down - go to larger time scale
+            this.dispatchEvent('scale-change', { scale: scales[currentIndex + 1] });
+        }
     }
 
     onMouseLeave() {
