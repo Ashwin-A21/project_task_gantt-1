@@ -1,6 +1,6 @@
 {
     'name': 'Project Task Gantt Chart',
-    'version': '17.0.6.0.0',
+    'version': '17.0.0.0.0',
     'category': 'Project',
     'summary': 'A dynamic, custom Gantt chart for project tasks with advanced features.',
     'description': """
@@ -37,4 +37,7 @@ Features:
     'application': True,
     'auto_install': False,
     'license': 'LGPL-3',
+    'price': 360.00,
+    'currency': 'USD',
+
 }
